@@ -1,0 +1,11 @@
+fimi-cyber-poc/data/raw/
+fimi-cyber-poc/data/interim/
+fimi-cyber-poc/data/processed/
+fimi-cyber-poc/results/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.DS_Store
+fimi-cyber-poc/lib/
