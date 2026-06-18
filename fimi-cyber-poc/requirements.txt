@@ -1,0 +1,14 @@
+pandas>=2.0
+numpy>=1.26
+pydantic>=2.5
+PyYAML>=6.0
+sentence-transformers>=2.7
+torch>=2.1
+scikit-learn>=1.4
+networkx>=3.2
+pyvis>=0.3.2
+matplotlib>=3.8
+tldextract>=5.0
+tqdm>=4.66
+pytest>=8.0
+pyarrow>=14.0
