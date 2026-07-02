@@ -6,7 +6,11 @@
 
 ```bash
 pip install -r requirements.txt
-python scripts/run_all.py
+python scripts/run_all.py          # 전체 파이프라인 실행
+```
+
+```bash
+python scripts/serve.py            # 웹 대시보드 → http://localhost:5000
 ```
 
 ```bash
@@ -28,7 +32,8 @@ src/fimicyber/
   eval/          GT, MAP/nDCG, E1/E2/E3, ablation, 강건성
   viz/           pyvis 증거 경로, matplotlib 차트, report.md
 scripts/
-  run_all.py     전체 파이프라인 단일 진입점
+  run_all.py        전체 파이프라인 단일 진입점
+  serve.py          Flask 웹 대시보드 (파이프라인 실행·테스트·결과 시각화)
   make_fixtures.py  샘플 20건 생성기 (DISINFOX 미사용 시 자동 호출)
 ```
 
@@ -42,7 +47,7 @@ scripts/
 | `results/gridsearch.csv` | α×β 그리드 탐색 |
 | `results/robustness.csv` | noise×coverage 9시나리오 |
 | `results/priority_table.csv` | 사건별 조사 우선순위 |
-| `results/figures/` | 막대·선·히트맵 차트 |
+| `results/figures/` | 막대·선·히트맵·레이더·분포 차트 (7종) |
 | `results/evidence_paths/` | 상위 3쌍 pyvis HTML |
 | `results/report.md` | 자동 생성 종합 리포트 |
 
