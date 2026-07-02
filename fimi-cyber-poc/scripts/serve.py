@@ -60,6 +60,7 @@ CHART_INFO = [
     ("grid_heatmap.png",       "Grid Search: α × β MAP"),
     ("robustness_lines.png",   "강건성: 노이즈 비율 vs MAP"),
     ("pairwise_heatmap.png",   "Pairwise FCLS_E3 히트맵"),
+    ("event_cluster.png",      "이벤트 클러스터 (스프링 레이아웃)"),
 ]
 
 # ── SSE run helper ────────────────────────────────────────────────────────────
@@ -363,6 +364,7 @@ _BASE_TMPL = (
     <a href="/tables"   class="{{ 'active' if page=='tables'   else '' }}"><span class="ico">📋</span> 테이블</a>
     <a href="/report"   class="{{ 'active' if page=='report'   else '' }}"><span class="ico">📄</span> 보고서</a>
     <a href="/evidence" class="{{ 'active' if page=='evidence' else '' }}"><span class="ico">🕸</span> 증거 경로</a>
+    <a href="/cluster"  class="{{ 'active' if page=='cluster'  else '' }}"><span class="ico">🔵</span> 클러스터 그래프</a>
   </nav>
 </div>
 
@@ -744,6 +746,109 @@ def evidence_page():
         content = f'<div class="ev-grid">{cards}</div>'
 
     return _render("증거 경로", "evidence", content)
+
+
+# ── Cluster graph ─────────────────────────────────────────────────────────────
+
+@app.route("/cluster/file")
+def cluster_file():
+    p = RESULTS / "event_cluster.html"
+    if p.exists():
+        return send_from_directory(RESULTS, "event_cluster.html")
+    return "No cluster graph yet", 404
+
+
+@app.route("/cluster/file/lib/<path:filename>")
+def cluster_lib(filename):
+    return send_from_directory(ROOT / "lib", filename)
+
+
+@app.route("/api/run/cluster")
+def api_run_cluster():
+    if _running.get("cluster"):
+        return Response(
+            "data: {\"line\":\"이미 실행 중\"}\n\ndata: {\"done\":true,\"rc\":1}\n\n",
+            mimetype="text/event-stream",
+        )
+    _running["cluster"] = True
+
+    def gen():
+        try:
+            yield from _sse_stream([
+                sys.executable, "-c",
+                "import sys; sys.path.insert(0,'src');"
+                "from fimicyber.config import load_config;"
+                "from fimicyber.schema import Event;"
+                "import json, pandas as pd;"
+                "cfg = load_config();"
+                "events = [Event.model_validate_json(l) for l in open('data/interim/events.jsonl')];"
+                "scores_df = pd.read_csv('results/pairwise_scores.csv');"
+                "from fimicyber.viz.cluster import build_event_cluster, plot_event_cluster_static;"
+                "build_event_cluster(events, scores_df, cfg);"
+                "plot_event_cluster_static(events, scores_df, cfg);"
+                "print('클러스터 그래프 생성 완료')",
+            ])
+        finally:
+            _running["cluster"] = False
+
+    return Response(stream_with_context(gen()), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/cluster")
+def cluster_page():
+    html_exists = (RESULTS / "event_cluster.html").exists()
+    png_exists  = (RESULTS / "figures" / "event_cluster.png").exists()
+
+    build_btn = (
+        '<button class="btn btn-pr" onclick="rebuildCluster()">🔄 재생성</button>'
+        '<span id="cl-status" class="pill pill-idle">대기</span>'
+    )
+
+    if html_exists:
+        graph_area = (
+            '<div style="border:1px solid var(--bdr);border-radius:10px;overflow:hidden;'
+            'height:calc(100vh - 160px);margin-bottom:16px">'
+            '<iframe src="/cluster/file" style="width:100%;height:100%;border:none" '
+            'id="cluster-iframe"></iframe>'
+            '</div>'
+        )
+    else:
+        graph_area = (
+            '<div class="card" style="text-align:center;padding:60px;color:var(--mu)">'
+            '클러스터 그래프가 없습니다. 재생성 버튼을 눌러 생성하세요.'
+            '</div>'
+        )
+
+    static_area = ""
+    if png_exists:
+        static_area = (
+            '<div class="cc" style="margin-top:14px">'
+            '<h3>정적 스프링 레이아웃 (PNG)</h3>'
+            '<img src="/fig/event_cluster.png" style="width:100%;cursor:zoom-in">'
+            '</div>'
+        )
+
+    term = '<div class="card-title" style="margin-top:14px">재생성 로그</div><div class="term" id="cl-term" style="min-height:80px"></div>'
+
+    content = (
+        f'<div class="btn-group mb-4">{build_btn}</div>'
+        f'{graph_area}'
+        f'{static_area}'
+        f'{term}'
+    )
+
+    js = """
+function rebuildCluster() {
+  runSSE('/api/run/cluster', 'cl-term', 'cl-status', false, ok => {
+    if (ok) {
+      document.getElementById('cluster-iframe') &&
+        (document.getElementById('cluster-iframe').src = '/cluster/file?' + Date.now());
+    }
+  });
+}
+"""
+    return _render("클러스터 그래프", "cluster", content, js=js)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

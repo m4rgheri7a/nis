@@ -30,7 +30,8 @@ STEPS = [
     ("M7-grid",      "Grid search → results/gridsearch.csv + figures/grid_heatmap.png"),
     ("M7-robust",    "Robustness experiment → results/robustness.csv + figures/robustness_lines.png"),
     ("M8-viz",       "Evidence path visualisation → results/evidence_paths/"),
-    ("M8-charts",    "Generate charts → figures/{metrics_bar,ablation_bar,score_distribution,component_radar,pairwise_heatmap,grid_heatmap,robustness_lines}.png"),
+    ("M8-cluster",   "Event cluster graph → results/event_cluster.html + figures/event_cluster.png"),
+    ("M8-charts",    "Generate charts → figures/{metrics_bar,...,event_cluster}.png"),
     ("M8-report",    "Generate report → results/report.md"),
 ]
 
@@ -137,6 +138,11 @@ def full_run(cfg_path: Path | None = None) -> None:
     _step("M8-viz")
     from fimicyber.viz.evidence_path import render_top_pairs
     render_top_pairs(events, G, scores_df, cfg)
+
+    _step("M8-cluster")
+    from fimicyber.viz.cluster import build_event_cluster, plot_event_cluster_static
+    build_event_cluster(events, scores_df, cfg)
+    plot_event_cluster_static(events, scores_df, cfg)
 
     _step("M8-charts")
     from fimicyber.viz.charts import generate_all_charts
