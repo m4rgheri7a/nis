@@ -167,6 +167,7 @@ def generate_synthetic_iocs(events: list[Event], cfg: Any) -> list[Event]:
     ns_link_prob: float = default["ns_link_prob"]
     type_mix: dict[str, float] = default["type_mix"]
     base_seed: int = int(sc.get("base_seed", 42))
+    eligible_sources = set(default.get("eligible_source_datasets", ["disinfox", "fixture"]))
 
     # Validate config constraints (spec 4.6)
     if coverage >= 1.0:
@@ -180,7 +181,7 @@ def generate_synthetic_iocs(events: list[Event], cfg: Any) -> list[Event]:
     from collections import defaultdict
     camp_map: dict[str, list[int]] = defaultdict(list)
     for idx, ev in enumerate(events):
-        if ev.campaign_id:
+        if ev.campaign_id and ev.source_dataset in eligible_sources:
             camp_map[ev.campaign_id].append(idx)
 
     manifest: dict[str, Any] = {
@@ -249,7 +250,10 @@ def generate_synthetic_iocs(events: list[Event], cfg: Any) -> list[Event]:
             )
 
     # Noise injection
-    all_idxs = list(range(len(events)))
+    all_idxs = [
+        idx for idx, ev in enumerate(events)
+        if ev.source_dataset in eligible_sources
+    ]
     n_noise = max(1, int(len(events) * noise_ratio))
     noise_targets = rng.sample(all_idxs, min(n_noise, len(all_idxs)))
 

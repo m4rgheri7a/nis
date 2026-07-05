@@ -4,11 +4,12 @@ default:
   noise_ratio: 0.15         # 무관 사건에 저식별력 공유 지표 주입 비율 (기본 파이프라인에서 0.0 금지)
   temporal_jitter_days: 14
   ns_link_prob: 0.5         # 공유 도메인에 NS 관계까지 부여할 확률
+  eligible_source_datasets: ["disinfox", "fixture"]
   type_mix: {domain: 0.40, url: 0.25, ipv4: 0.20, hash_sha256: 0.10, email: 0.05}
 
 robustness_grid:            # 10.5 — noise=0.0은 이 실험 내부에서만 허용
   noise_ratio: [0.0, 0.15, 0.30]
-  coverage: [0.5, 0.65, 0.8]
+  coverage: [0.65]
 
 reserved_only:              # 4.6 절대 규칙 — 검증 함수가 이 목록만 허용
   domain_tld: ".test"

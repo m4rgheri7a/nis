@@ -143,6 +143,7 @@ def _parse_dsrm_csv(path: Path) -> list[Event] | None:
             # (no explicit campaign field in this dataset)
             cleaned_actor = re.sub(r"[\*\s]+", "_", actor.strip().lower())
             campaign_id = f"actor:{cleaned_actor}" if actor and actor != "Unknown" else None
+            campaign_id_source = "actor_surrogate" if campaign_id else "none"
 
             # TTPs: columns with value "1"
             ttps = []
@@ -212,6 +213,7 @@ def _parse_dsrm_csv(path: Path) -> list[Event] | None:
                     title=title,
                     description=description,
                     campaign_id=campaign_id,
+                    campaign_id_source=campaign_id_source,
                     reported_actor=actor or None,
                     target_countries=target_countries,
                     target_sectors=target_sectors,
@@ -322,6 +324,7 @@ def _map_record(obj: dict[str, Any]) -> Event | None:
     campaign_id = (
         str(obj.get("campaign_id") or obj.get("campaign") or "").strip() or None
     )
+    campaign_id_source = "explicit" if campaign_id else "none"
     if not campaign_id:
         # Try to infer from related-incidents structure
         related = obj.get("related_incidents") or obj.get("related") or []
@@ -336,6 +339,7 @@ def _map_record(obj: dict[str, Any]) -> Event | None:
     # If no campaign_id, fall back to actor as surrogate
     if not campaign_id and reported_actor:
         campaign_id = f"actor:{reported_actor.lower().replace(' ', '_')}"
+        campaign_id_source = "actor_surrogate"
 
     # TTPs
     ttps_raw = obj.get("ttps") or obj.get("techniques") or obj.get("disarm") or []
@@ -379,6 +383,7 @@ def _map_record(obj: dict[str, Any]) -> Event | None:
             title=title,
             description=description,
             campaign_id=campaign_id,
+            campaign_id_source=campaign_id_source,
             reported_actor=reported_actor,
             target_countries=target_countries,
             target_sectors=target_sectors,
@@ -397,6 +402,11 @@ def _parse_date(value: Any) -> date | None:
     if not value:
         return None
     s = str(value).strip()
+    if re.fullmatch(r"\d{4}", s):
+        return date(int(s), 7, 1)
+    year_match = re.match(r"^(\d{4})\D", s)
+    if year_match and not re.match(r"^\d{4}[-/]\d{1,2}", s):
+        return date(int(year_match.group(1)), 7, 1)
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y", "%Y-%m"):
         try:
             from datetime import datetime
@@ -426,6 +436,7 @@ def _fixture_fallback(interim_dir: Path, fallbacks_used: list[str]) -> list[Even
 def _write_mapping_report(out_dir: Path, events: list[Event], source: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     n_campaign = sum(1 for e in events if e.campaign_id)
+    n_actor_surrogate = sum(1 for e in events if e.campaign_id_source == "actor_surrogate")
     campaigns = sorted({e.campaign_id for e in events if e.campaign_id})
 
     lines = [
@@ -434,6 +445,7 @@ def _write_mapping_report(out_dir: Path, events: list[Event], source: str) -> No
         f"**Source**: `{source}`",
         f"**Total events**: {len(events)}",
         f"**Events with campaign_id**: {n_campaign}",
+        f"**Actor-surrogate campaign_id**: {n_actor_surrogate}",
         f"**Unique campaigns**: {len(campaigns)}",
         "",
         "## Campaign list",
@@ -452,7 +464,8 @@ def _write_mapping_report(out_dir: Path, events: list[Event], source: str) -> No
         "| incident id | `event_id` | Direct map |",
         "| title/name | `title` | Direct map |",
         "| description/content/summary | `description` | Embedding target |",
-        "| campaign/campaign_id | `campaign_id` | **Ground truth source** |",
+        "| campaign/campaign_id | `campaign_id` | **Ground truth source**; actor fallback is flagged separately |",
+        "| campaign source | `campaign_id_source` | explicit / actor_surrogate / fixture / none |",
         "| reported_actor/actor | `reported_actor` | Context only, not used in eval |",
         "| ttps/techniques/disarm | `ttps` | TTP ID strings |",
         "| target_countries/countries | `target_countries` | Uppercased |",

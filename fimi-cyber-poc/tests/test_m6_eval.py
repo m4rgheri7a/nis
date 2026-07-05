@@ -83,3 +83,28 @@ def test_T13_map_full_system(cfg):
     metrics = evaluate_condition(gt["query_ids"], all_ids, gt["positives"], perfect_fn, cfg)
     assert abs(metrics["MAP"] - 1.0) < 1e-9, f"Expected MAP=1.0, got {metrics['MAP']}"
     assert abs(metrics["nDCG@10"] - 1.0) < 1e-9, f"Expected nDCG=1.0, got {metrics['nDCG@10']}"
+
+
+def test_gt_can_exclude_actor_surrogate():
+    from fimicyber.eval.groundtruth import build_ground_truth
+    from fimicyber.schema import Event
+
+    events = [
+        Event(event_id="e1", title="t", description="d", campaign_id="actor:x", campaign_id_source="actor_surrogate"),
+        Event(event_id="e2", title="t", description="d", campaign_id="actor:x", campaign_id_source="actor_surrogate"),
+        Event(event_id="e3", title="t", description="d", campaign_id="camp", campaign_id_source="explicit"),
+        Event(event_id="e4", title="t", description="d", campaign_id="camp", campaign_id_source="explicit"),
+    ]
+
+    with_actor = build_ground_truth(events, include_actor_surrogate=True)
+    explicit_only = build_ground_truth(events, include_actor_surrogate=False)
+    assert len(with_actor["positives"]) == 2
+    assert len(explicit_only["positives"]) == 1
+
+
+def test_disinfox_year_date_parse():
+    from datetime import date
+    from fimicyber.loaders.disinfox import _parse_date
+
+    assert _parse_date("2018") == date(2018, 7, 1)
+    assert _parse_date("2018-04") == date(2018, 4, 1)
