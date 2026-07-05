@@ -123,6 +123,29 @@ def evaluate_condition(
     return result
 
 
+def _average_precisions_by_query(
+    query_ids: list[str],
+    all_ids: list[str],
+    positives: set[frozenset],
+    score_fn: Any,
+) -> list[float]:
+    """Compute each query's AP once so bootstrap does not rerank repeatedly."""
+    aps: list[float] = []
+    for q_id in query_ids:
+        candidates = [(doc_id, score_fn(q_id, doc_id)) for doc_id in all_ids if doc_id != q_id]
+        candidates.sort(key=lambda x: (x[1] is None or math.isnan(x[1]), -(x[1] or 0)))
+        ranked = [doc_id for doc_id, _ in candidates]
+        relevant = {
+            eid
+            for fs in positives
+            if q_id in fs
+            for eid in fs
+            if eid != q_id
+        }
+        aps.append(average_precision(ranked, relevant))
+    return aps
+
+
 def bootstrap_ci(
     query_ids: list[str],
     all_ids: list[str],
@@ -133,13 +156,19 @@ def bootstrap_ci(
     seed: int = 42,
 ) -> tuple[float, float]:
     """Return (ci_low, ci_high) for MAP via bootstrap."""
+    if n_iter <= 0:
+        return float("nan"), float("nan")
+
+    query_aps = _average_precisions_by_query(query_ids, all_ids, positives, score_fn)
+    if not query_aps:
+        return float("nan"), float("nan")
+
     rng = random.Random(seed)
     maps: list[float] = []
 
     for _ in range(n_iter):
-        sample = rng.choices(query_ids, k=len(query_ids))
-        res = evaluate_condition(sample, all_ids, positives, score_fn, cfg)
-        maps.append(res["MAP"])
+        sample = rng.choices(query_aps, k=len(query_aps))
+        maps.append(float(np.mean(sample)))
 
     maps.sort()
     lo = maps[int(0.025 * n_iter)]

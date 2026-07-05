@@ -81,7 +81,17 @@ def i_direct(
     """Return I_direct or None if either set is empty."""
     oi = {ioc.value for ioc in ev_i.iocs if ioc.category == "OperationalIOC"}
     oj = {ioc.value for ioc in ev_j.iocs if ioc.category == "OperationalIOC"}
+    return _i_direct_sets(oi, oj, cfg, event_ioc_map, ioc_meta)
 
+
+def _i_direct_sets(
+    oi: set[str],
+    oj: set[str],
+    cfg: Any,
+    event_ioc_map: dict[str, set[str]],
+    ioc_meta: dict[str, tuple[str, float]],
+) -> float | None:
+    """Return I_direct from precomputed IOC value sets."""
     if not oi or not oj:
         return None
 
@@ -105,14 +115,29 @@ def i_path(
     cfg: Any,
 ) -> float | None:
     """Return I_path or None if no valid path exists."""
+    oi_raw = {_node_id("IOC", ioc.value) for ioc in ev_i.iocs if ioc.category == "OperationalIOC"}
+    oj_raw = {_node_id("IOC", ioc.value) for ioc in ev_j.iocs if ioc.category == "OperationalIOC"}
+    if not oi_raw or not oj_raw:
+        return None
+
     sub = infra_subgraph(G)
+    return _i_path_from_nodes(
+        {n for n in oi_raw if n in sub},
+        {n for n in oj_raw if n in sub},
+        sub,
+        G,
+        cfg,
+    )
 
-    oi_nodes = {_node_id("IOC", ioc.value) for ioc in ev_i.iocs if ioc.category == "OperationalIOC"}
-    oj_nodes = {_node_id("IOC", ioc.value) for ioc in ev_j.iocs if ioc.category == "OperationalIOC"}
 
-    oi_nodes = {n for n in oi_nodes if n in sub}
-    oj_nodes = {n for n in oj_nodes if n in sub}
-
+def _i_path_from_nodes(
+    oi_nodes: set[str],
+    oj_nodes: set[str],
+    sub: nx.Graph,
+    G: nx.Graph,
+    cfg: Any,
+) -> float | None:
+    """Return I_path from precomputed IOC graph node sets."""
     if not oi_nodes or not oj_nodes:
         return None
 
@@ -126,9 +151,7 @@ def i_path(
             if src == dst:
                 continue  # direct share → I_direct handles this
             try:
-                paths = list(
-                    nx.all_simple_paths(sub, source=src, target=dst, cutoff=max_path_len)
-                )
+                paths = nx.all_simple_paths(sub, source=src, target=dst, cutoff=max_path_len)
             except (nx.NetworkXNoPath, nx.NodeNotFound):
                 continue
 
@@ -153,10 +176,6 @@ def i_path(
                 src_node = G.nodes.get(src, {})
                 dst_node = G.nodes.get(dst, {})
                 src_type = src_node.get("ioc_type", "domain")
-                tau_type = min(
-                    float(cfg.ioc_score["tau_days"].get(src_type, 60)),
-                    float(cfg.ioc_score["tau_days"].get(dst_node.get("ioc_type", "domain"), 60)),
-                )
                 temp_ov = _temporal_overlap(
                     src_node.get("first_seen", ""),
                     src_node.get("last_seen", ""),
@@ -183,6 +202,7 @@ def ioc_matrix(
 
     # Build lookup maps
     event_ioc_map: dict[str, set[str]] = {}
+    event_ioc_nodes: dict[str, set[str]] = {}
     ioc_meta: dict[str, tuple[str, float]] = {}
 
     for ev in events:
@@ -194,13 +214,29 @@ def ioc_matrix(
                     ioc_meta[ioc.value] = (ioc.ioc_type, ioc.confidence)
         event_ioc_map[ev.event_id] = vals
 
+    sub = infra_subgraph(G)
+    for ev in events:
+        event_ioc_nodes[ev.event_id] = {
+            _node_id("IOC", val)
+            for val in event_ioc_map[ev.event_id]
+            if _node_id("IOC", val) in sub
+        }
+
     mat = np.full((n, n), float("nan"), dtype=np.float64)
 
     for i in range(n):
         mat[i, i] = float("nan")
         for j in range(i + 1, n):
-            id_ = i_direct(events[i], events[j], cfg, event_ioc_map, ioc_meta)
-            ip = i_path(events[i], events[j], G, cfg)
+            oi = event_ioc_map[events[i].event_id]
+            oj = event_ioc_map[events[j].event_id]
+            id_ = _i_direct_sets(oi, oj, cfg, event_ioc_map, ioc_meta)
+            ip = _i_path_from_nodes(
+                event_ioc_nodes[events[i].event_id],
+                event_ioc_nodes[events[j].event_id],
+                sub,
+                G,
+                cfg,
+            )
 
             if id_ is None and ip is None:
                 score = float("nan")

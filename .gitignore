@@ -2,6 +2,8 @@ fimi-cyber-poc/data/raw/
 fimi-cyber-poc/data/interim/
 fimi-cyber-poc/data/processed/
 fimi-cyber-poc/results/
+fimi-cyber-poc/.venv/
+fimi-cyber-poc/server*.log
 __pycache__/
 *.pyc
 *.pyo

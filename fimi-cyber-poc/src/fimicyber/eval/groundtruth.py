@@ -13,7 +13,10 @@ import pandas as pd
 from fimicyber.schema import Event
 
 
-def build_ground_truth(events: list[Event]) -> dict[str, Any]:
+def build_ground_truth(
+    events: list[Event],
+    include_actor_surrogate: bool = True,
+) -> dict[str, Any]:
     """
     Returns:
       positives: set of frozenset({event_id_a, event_id_b})
@@ -22,6 +25,8 @@ def build_ground_truth(events: list[Event]) -> dict[str, Any]:
     """
     camp_map: dict[str, list[str]] = defaultdict(list)
     for ev in events:
+        if ev.campaign_id_source == "actor_surrogate" and not include_actor_surrogate:
+            continue
         if ev.campaign_id:
             camp_map[ev.campaign_id].append(ev.event_id)
 
@@ -40,16 +45,34 @@ def build_ground_truth(events: list[Event]) -> dict[str, Any]:
         "positives": positives,
         "query_ids": list(set(query_ids)),
         "campaign_map": dict(camp_map),
+        "include_actor_surrogate": include_actor_surrogate,
     }
 
 
-def gt_stats(gt: dict[str, Any]) -> dict[str, Any]:
+def gt_stats(gt: dict[str, Any], events: list[Event] | None = None) -> dict[str, Any]:
     camps = gt["campaign_map"]
     eligible = {c: ids for c, ids in camps.items() if len(ids) >= 2}
-    return {
+    stats = {
         "n_campaigns_total": len(camps),
         "n_campaigns_eligible": len(eligible),
         "n_positive_pairs": len(gt["positives"]),
         "n_query_events": len(gt["query_ids"]),
         "campaign_sizes": {c: len(ids) for c, ids in eligible.items()},
+        "include_actor_surrogate": gt.get("include_actor_surrogate", True),
     }
+    if events is not None:
+        stats.update({
+            "n_events_actor_surrogate": sum(
+                1 for ev in events if ev.campaign_id_source == "actor_surrogate"
+            ),
+            "n_events_debunk_group": sum(
+                1 for ev in events if ev.campaign_id_source == "debunk_group"
+            ),
+            "n_events_explicit_campaign": sum(
+                1 for ev in events if ev.campaign_id and ev.campaign_id_source == "explicit"
+            ),
+            "n_events_fixture_campaign": sum(
+                1 for ev in events if ev.campaign_id and ev.campaign_id_source == "fixture"
+            ),
+        })
+    return stats

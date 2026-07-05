@@ -39,6 +39,10 @@ class Config:
         return self._w["narrative"]
 
     @property
+    def datasets(self) -> dict[str, Any]:
+        return self._w.get("datasets", {})
+
+    @property
     def ioc_score(self) -> dict[str, Any]:
         return self._w["ioc_score"]
 

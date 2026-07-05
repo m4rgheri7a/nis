@@ -228,7 +228,8 @@ def _infer_ntype(value: str) -> str:
         pass
     if value.startswith("AS") and value[2:].isdigit():
         return "ASN"
-    if value.startswith("ns") or value.startswith("NS"):
+    lower = value.lower()
+    if lower.startswith("ns") or lower.endswith(".ns.cloudflare.com"):
         return "NS"
     return "Domain"
 
@@ -242,3 +243,4 @@ def infra_subgraph(G: nx.Graph) -> nx.Graph:
     """Return subgraph containing only infrastructure nodes (no Event/TTP/Channel/etc.)."""
     infra_nodes = [n for n, d in G.nodes(data=True) if d.get("ntype") in _INFRA_NTYPES]
     return G.subgraph(infra_nodes).copy()
+
