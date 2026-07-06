@@ -34,7 +34,7 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 # ── Pipeline steps ────────────────────────────────────────────────────────────
 STEPS = [
-    ("M1-load",       "DISINFOX 사건 로드  →  events.jsonl"),
+    ("M1-load",       "DISINFOX + EUvsDisinfo 통합 로드  →  events.jsonl"),
     ("M3-ioc",        "IOC 추출·분류·합성  →  iocs.jsonl"),
     ("M2-embed",      "텍스트 임베딩 계산"),
     ("M2-narrative",  "내러티브 유사도 행렬  N(i,j)"),
@@ -43,7 +43,7 @@ STEPS = [
     ("M5-components", "D / C / T / A 성분 계산"),
     ("M5-fcls",       "FCLS 통합 점수  →  pairwise_scores.csv"),
     ("M5-priority",   "Priority(i)  →  priority_table.csv"),
-    ("M6-eval",       "E1/E2/E3 평가  →  metrics_summary.csv"),
+    ("M6-eval",       "통합 E1/E2/E3 평가  →  metrics_summary.csv"),
     ("M7-ablation",   "Ablation study  →  ablation.csv"),
     ("M7-grid",       "Grid search  →  gridsearch.csv"),
     ("M7-robust",     "강건성 실험  →  robustness.csv"),
@@ -576,7 +576,7 @@ def tests_page():
         '<span id="test-status" class="pill pill-idle">대기</span>'
         '</div>'
         '<div class="card mb-4" style="background:#f0fdf4;border-color:#86efac">'
-        '<div class="card-title">테스트 목록 (27개 골든 테스트)</div>'
+        '<div class="card-title">테스트 목록</div>'
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px;font-size:12.5px">'
         + "".join(
             f'<div style="padding:5px 8px;background:#fff;border:1px solid #e1e4ed;border-radius:6px">'

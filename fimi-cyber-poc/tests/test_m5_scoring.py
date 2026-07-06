@@ -74,3 +74,29 @@ def test_T9_fcls_no_zero_substitution():
     score_zero = fcls(comp_with_zero, weights)
     score_missing = fcls(comp_missing, weights)
     assert score_zero != score_missing, "Missing and zero should produce different scores"
+
+
+def test_T9_fcls_strict_caps_n_only():
+    from fimicyber.scoring.fcls import fcls_strict
+
+    components = {"N": 1.0, "I": None, "D": None, "C": None, "T": None, "A": None, "N_conf": 1.0}
+    weights = {"N": 0.30, "I": 0.30, "D": 0.15, "C": 0.10, "T": 0.10, "A": 0.0}
+    policy = {
+        "min_evidence_components": 2,
+        "insufficient_evidence_penalty": 0.35,
+        "coverage_penalty_power": 0.7,
+        "n_only_cap": 0.45,
+    }
+
+    result = fcls_strict(components, weights, policy)
+    assert result <= 0.45
+
+
+def test_T9_fcls_strict_uses_n_confidence():
+    from fimicyber.scoring.fcls import fcls_strict
+
+    weights = {"N": 0.30, "I": 0.30, "D": 0.15, "C": 0.10, "T": 0.10, "A": 0.0}
+    base = {"N": 1.0, "I": 0.8, "D": 0.5, "C": None, "T": 1.0, "A": None}
+    high = fcls_strict({**base, "N_conf": 1.0}, weights, {})
+    low = fcls_strict({**base, "N_conf": 0.2}, weights, {})
+    assert low < high

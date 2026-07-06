@@ -10,7 +10,7 @@ import pandas as pd
 from fimicyber.schema import Event
 from fimicyber.eval.groundtruth import build_ground_truth, gt_stats
 from fimicyber.eval.metrics import evaluate_condition, bootstrap_ci, roc_auc
-from fimicyber.scoring.fcls import fcls
+from fimicyber.scoring.fcls import fcls, fcls_strict, pair_narrative_confidence
 
 
 # ── ζ=0 hard guard ────────────────────────────────────────────────────────────
@@ -48,6 +48,7 @@ def run_evaluation(
     scores_df: pd.DataFrame,
     cfg: Any,
     allow_actor: bool = False,
+    include_actor_surrogate: bool = True,
 ) -> dict[str, dict[str, float]]:
     """
     Run E1, E2, E3 (and optionally E3+A) evaluations.
@@ -57,14 +58,26 @@ def run_evaluation(
         # ζ>0 requested but allow_actor=False → OK, FCLS computation already set ζ=0
         pass
 
-    gt = build_ground_truth(events)
+    gt = build_ground_truth(events, include_actor_surrogate=include_actor_surrogate)
     all_ids = [ev.event_id for ev in events]
     query_ids = gt["query_ids"]
     positives = gt["positives"]
 
     results: dict[str, dict[str, float]] = {}
 
-    for condition, col in [("E1", "FCLS_E1"), ("E2", "FCLS_E2"), ("E3", "FCLS_E3")]:
+    conditions = [("E1", "FCLS_E1"), ("E2", "FCLS_E2")]
+    if "FCLS_E2_no_synthetic_ioc" in scores_df.columns and scores_df["FCLS_E2_no_synthetic_ioc"].notna().any():
+        conditions.append(("E2_no_synthetic_ioc", "FCLS_E2_no_synthetic_ioc"))
+    if "FCLS_E3_raw" in scores_df.columns:
+        conditions.append(("E3_raw", "FCLS_E3_raw"))
+    conditions.append(("E3", "FCLS_E3"))
+    if "FCLS_E3_no_synthetic_ioc" in scores_df.columns and scores_df["FCLS_E3_no_synthetic_ioc"].notna().any():
+        conditions.append(("E3_no_synthetic_ioc", "FCLS_E3_no_synthetic_ioc"))
+
+    gt_mode = "campaign_or_actor_surrogate" if include_actor_surrogate else "explicit_campaign_only"
+    if len({ev.source_dataset for ev in events}) > 1 and include_actor_surrogate:
+        gt_mode = "combined_all_datasets"
+    for condition, col in conditions:
         fn = _build_score_fn(events, scores_df, col, allow_actor=allow_actor)
         metrics = evaluate_condition(query_ids, all_ids, positives, fn, cfg)
         ci_lo, ci_hi = bootstrap_ci(query_ids, all_ids, positives, fn, cfg,
@@ -72,6 +85,7 @@ def run_evaluation(
                                      seed=cfg.seed)
         metrics["MAP_CI_low"] = ci_lo
         metrics["MAP_CI_high"] = ci_hi
+        metrics["gt_mode"] = gt_mode
         results[condition] = metrics
 
     return results
@@ -99,7 +113,7 @@ def run_ablation(
     cfg: Any,
 ) -> pd.DataFrame:
     """Ablation: remove each component N/I/D/C/T one at a time."""
-    from fimicyber.scoring.fcls import fcls as fcls_fn, _extract_weights
+    from fimicyber.scoring.fcls import fcls_strict as fcls_fn, _extract_weights
 
     gt = build_ground_truth(events)
     all_ids = [ev.event_id for ev in events]
@@ -109,6 +123,14 @@ def run_ablation(
     base_weights = _extract_weights(cfg, allow_actor=False)
     components_to_ablate = ["N", "I", "D", "C", "T"]
 
+    comp_lookup: dict[frozenset, dict[str, float | None]] = {}
+    for _, row in scores_df.iterrows():
+        comp = {
+            k: (None if row.get(k) is None or pd.isna(row.get(k)) else float(row.get(k)))
+            for k in ["N", "I", "D", "C", "T", "A", "N_conf"]
+        }
+        comp_lookup[frozenset({row["event_i"], row["event_j"]})] = comp
+
     rows = []
     for ablate in components_to_ablate:
         w = dict(base_weights)
@@ -116,16 +138,10 @@ def run_ablation(
 
         # Build score function from raw components
         def _score_fn_ablate(q_id: str, doc_id: str, _w=w) -> float | None:
-            row_data = scores_df[
-                ((scores_df["event_i"] == q_id) & (scores_df["event_j"] == doc_id)) |
-                ((scores_df["event_i"] == doc_id) & (scores_df["event_j"] == q_id))
-            ]
-            if row_data.empty:
+            comp = comp_lookup.get(frozenset({q_id, doc_id}))
+            if comp is None:
                 return None
-            r = row_data.iloc[0]
-            comp = {k: (None if r.get(k) is None or (isinstance(r.get(k), float) and math.isnan(r.get(k))) else float(r.get(k)))
-                    for k in ["N", "I", "D", "C", "T", "A"]}
-            val = fcls_fn(comp, _w)
+            val = fcls_fn(comp, _w, cfg.fcls)
             return None if math.isnan(val) else val
 
         metrics = evaluate_condition(query_ids, all_ids, positives, _score_fn_ablate, cfg)
@@ -142,7 +158,7 @@ def run_grid(
     cfg: Any,
 ) -> pd.DataFrame:
     """Grid search over α, β ∈ config.eval.grid_alpha × grid_beta."""
-    from fimicyber.scoring.fcls import fcls as fcls_fn
+    from fimicyber.scoring.fcls import fcls_strict as fcls_fn
 
     gt = build_ground_truth(events)
     all_ids = [ev.event_id for ev in events]
@@ -181,8 +197,9 @@ def run_grid(
                     "C": None if math.isnan(comps["C"][i, j]) else float(comps["C"][i, j]),
                     "T": None if math.isnan(comps["T"][i, j]) else float(comps["T"][i, j]),
                     "A": None,
+                    "N_conf": pair_narrative_confidence(events[i], events[j], cfg),
                 }
-                val = fcls_fn(comp, _w)
+                val = fcls_fn(comp, _w, cfg.fcls)
                 return None if math.isnan(val) else val
 
             metrics = evaluate_condition(query_ids, all_ids, positives, _score_fn, cfg)
@@ -203,7 +220,7 @@ def run_robustness(
     from fimicyber.ioc.synthetic import generate_synthetic_iocs
     from fimicyber.graph.build import build_graph
     from fimicyber.graph.ioc_score import ioc_matrix
-    from fimicyber.scoring.fcls import build_pairwise_scores, fcls as fcls_fn, _extract_weights
+    from fimicyber.scoring.fcls import build_pairwise_scores, fcls_strict as fcls_fn, _extract_weights
 
     sc = cfg.synthetic
     grid = sc["robustness_grid"]
@@ -296,8 +313,9 @@ def run_robustness(
                         "C": None if math.isnan(comps["C"][i, j]) else float(comps["C"][i, j]),
                         "T": None if math.isnan(comps["T"][i, j]) else float(comps["T"][i, j]),
                         "A": None,
+                        "N_conf": pair_narrative_confidence(events_sc[i], events_sc[j], cfg),
                     }
-                    val = fcls_fn(comp, w)
+                    val = fcls_fn(comp, w, cfg.fcls)
                     return None if math.isnan(val) else val
                 return fn
 
@@ -334,12 +352,13 @@ def _generate_synthetic_no_guard(events: list[Event], cfg: Any) -> list[Event]:
     ns_link_prob = default["ns_link_prob"]
     type_mix = default["type_mix"]
     base_seed = int(sc.get("base_seed", 42))
+    eligible_sources = set(default.get("eligible_source_datasets", ["disinfox", "fixture"]))
 
     rng = random.Random(base_seed)
 
     camp_map: dict[str, list[int]] = defaultdict(list)
     for idx, ev in enumerate(events):
-        if ev.campaign_id:
+        if ev.campaign_id and ev.source_dataset in eligible_sources:
             camp_map[ev.campaign_id].append(idx)
 
     manifest: dict = {"seed": base_seed, "coverage": coverage, "noise_ratio": noise_ratio,
@@ -379,7 +398,10 @@ def _generate_synthetic_no_guard(events: list[Event], cfg: Any) -> list[Event]:
                                            "ioc_values": [i.value for i in dated], "ns": ns_val})
 
     if noise_ratio > 0:
-        all_idxs = list(range(len(events)))
+        all_idxs = [
+            idx for idx, ev in enumerate(events)
+            if ev.source_dataset in eligible_sources
+        ]
         n_noise = max(1, int(len(events) * noise_ratio))
         noise_targets = rng.sample(all_idxs, min(n_noise, len(all_idxs)))
         for idx in noise_targets:

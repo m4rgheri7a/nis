@@ -458,6 +458,7 @@ def make_fixtures(out_dir: Path | None = None) -> list:
             title=d["title"],
             description=d["description"],
             campaign_id=d.get("campaign_id"),
+            campaign_id_source="fixture" if d.get("campaign_id") else "none",
             reported_actor=d.get("reported_actor"),
             target_countries=d.get("target_countries", []),
             target_sectors=d.get("target_sectors", []),

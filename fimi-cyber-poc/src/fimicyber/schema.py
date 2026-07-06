@@ -32,6 +32,9 @@ class Event(BaseModel):
     title: str
     description: str
     campaign_id: str | None = None
+    campaign_id_source: Literal[
+        "explicit", "actor_surrogate", "debunk_group", "fixture", "curated", "none"
+    ] = "explicit"
     reported_actor: str | None = None
     target_countries: list[str] = Field(default_factory=list)
     target_sectors: list[str] = Field(default_factory=list)
@@ -42,3 +45,4 @@ class Event(BaseModel):
     evidence_sources: list[str] = Field(default_factory=list)
     iocs: list[IOC] = Field(default_factory=list)
     source_dataset: str = "disinfox"
+

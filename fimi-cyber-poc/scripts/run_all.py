@@ -16,7 +16,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 STEPS = [
-    ("M1-load",      "Load DISINFOX events → data/interim/events.jsonl"),
+    ("M1-load",      "Load DISINFOX + EUvsDisinfo events → data/interim/events.jsonl"),
     ("M3-ioc",       "Extract & classify IOCs, generate synthetic IOCs → data/interim/iocs.jsonl"),
     ("M2-embed",     "Compute SBERT embeddings → data/processed/embeddings.parquet"),
     ("M2-narrative", "Compute narrative matrix N(i,j)"),
@@ -25,7 +25,7 @@ STEPS = [
     ("M5-components","Compute D, C, T, A components"),
     ("M5-fcls",      "Compute FCLS(i,j) → results/pairwise_scores.csv"),
     ("M5-priority",  "Compute Priority(i) → results/priority_table.csv"),
-    ("M6-eval",      "Evaluate E1/E2/E3 → results/metrics_summary.csv"),
+    ("M6-eval",      "Evaluate combined E1/E2/E3 → results/metrics_summary.csv"),
     ("M7-ablation",  "Ablation study → results/ablation.csv"),
     ("M7-grid",      "Grid search → results/gridsearch.csv + figures/grid_heatmap.png"),
     ("M7-robust",    "Robustness experiment → results/robustness.csv + figures/robustness_lines.png"),
@@ -51,11 +51,15 @@ def full_run(cfg_path: Path | None = None) -> None:
 
     # ── M1: load events ────────────────────────────────────────────────────
     _step("M1-load")
-    from fimicyber.loaders.disinfox import load_events
+    from collections import Counter
+    from fimicyber.loaders.combined import load_events
     events = load_events(cfg.data_dir / "raw", cfg, fallbacks_used)
     _save_jsonl(events, cfg.data_dir / "interim" / "events.jsonl")
+    source_counts = Counter(e.source_dataset for e in events)
+    source_text = ", ".join(f"{k}={v}" for k, v in sorted(source_counts.items()))
     print(f"  → {len(events)} events loaded, "
           f"{sum(1 for e in events if e.campaign_id)} with campaign_id")
+    print(f"  → source mix: {source_text}")
 
     # ── M3: IOC pipeline ───────────────────────────────────────────────────
     _step("M3-ioc")
@@ -94,6 +98,13 @@ def full_run(cfg_path: Path | None = None) -> None:
     I = ioc_matrix(events, G, cfg)
     print(f"  → I matrix {I.shape}")
 
+    import copy
+    events_no_synthetic_ioc = copy.deepcopy(events)
+    for ev in events_no_synthetic_ioc:
+        ev.iocs = [ioc for ioc in ev.iocs if not ioc.synthetic]
+    G_no_synthetic = build_graph(events_no_synthetic_ioc, cfg)
+    I_no_synthetic = ioc_matrix(events_no_synthetic_ioc, G_no_synthetic, cfg)
+
     # ── M5: components + FCLS + priority ──────────────────────────────────
     _step("M5-components")
     from fimicyber.scoring.components import compute_components
@@ -101,7 +112,7 @@ def full_run(cfg_path: Path | None = None) -> None:
 
     _step("M5-fcls")
     from fimicyber.scoring.fcls import build_pairwise_scores
-    scores_df = build_pairwise_scores(events, N, I, comps, cfg)
+    scores_df = build_pairwise_scores(events, N, I, comps, cfg, I_no_synthetic=I_no_synthetic)
     cfg.results_dir.mkdir(parents=True, exist_ok=True)
     scores_df.to_csv(cfg.results_dir / "pairwise_scores.csv", index=False)
     print(f"  → pairwise_scores.csv: {len(scores_df)} rows")
