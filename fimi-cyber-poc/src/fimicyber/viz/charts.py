@@ -250,6 +250,8 @@ def generate_report(
     scores_df: pd.DataFrame,
     cfg: Any,
     fallbacks_used: list[str],
+    attribution_df: pd.DataFrame | None = None,
+    attribution_metrics_df: pd.DataFrame | None = None,
 ) -> None:
     from fimicyber.eval.groundtruth import build_ground_truth, gt_stats
     from collections import Counter
@@ -401,6 +403,37 @@ def generate_report(
         "",
         "증거 경로 HTML: `results/evidence_paths/`",
         "",
+    ]
+
+    if attribution_df is not None and attribution_metrics_df is not None:
+        top_attribution = (
+            attribution_df[attribution_df["rank"] == 1]
+            .nlargest(10, "assessment_confidence")
+        )
+        attr_cols = [
+            "query_event_id", "candidate_actor", "support_score",
+            "candidate_probability", "assessment_confidence", "confidence_band",
+            "evidence_families", "real_ioc_support", "source_org_count",
+        ]
+        attr_cols = [column for column in attr_cols if column in top_attribution.columns]
+        lines += [
+            "## ⑦-1 공개자료 기반 행위자 귀속지원",
+            "",
+            "귀속지원 평가는 query보다 먼저 관측된 사건만 reference profile로 사용하고, "
+            "`reported_actor`를 입력 특징에서 제외하며, 인프라 성분은 실제 IOC "
+            "`I_no_synthetic`만 사용합니다.",
+            "",
+            attribution_metrics_df.to_markdown(index=False),
+            "",
+            top_attribution[attr_cols].to_markdown(index=False),
+            "",
+            "전체 후보와 경쟁 가설: `results/attribution_hypotheses.csv`",
+            "",
+            "귀속지원 그래프: `results/attribution_graph.json`",
+            "",
+        ]
+
+    lines += [
         "## ⑧ Synthetic Manifest 요약",
         "",
         "→ `results/synthetic_manifest.json` 참조",
@@ -426,6 +459,9 @@ def generate_report(
           "ground truth granularity가 다르므로 최종 성능 입증보다 구조 검증으로 해석합니다.",
         "- **ζ 제외 사유**: A항(reported_actor)은 Ground Truth 생성에 사용된 campaign_id와 "
           "상관관계가 있어 평가에 포함 시 순환논리가 발생합니다. E3 평가에서 ζ=0이 강제됩니다.",
+        "- **귀속지원의 법적 한계**: 행위자 후보는 공개 보고서의 과거 라벨과 비합성 증거를 "
+          "이용한 분석 가설입니다. 가입자 정보, 서버 로그, 압수물 또는 적법한 디지털 포렌식 "
+          "증거를 대체하지 않으며 범죄나 신원을 확정하지 않습니다.",
     ]
 
     out = cfg.results_dir / "report.md"

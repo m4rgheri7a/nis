@@ -26,6 +26,7 @@ STEPS = [
     ("M5-fcls",      "Compute FCLS(i,j) → results/pairwise_scores.csv"),
     ("M5-priority",  "Compute Priority(i) → results/priority_table.csv"),
     ("M6-eval",      "Evaluate combined E1/E2/E3 → results/metrics_summary.csv"),
+    ("M6-attribution","Rank temporal actor hypotheses → results/attribution_hypotheses.csv"),
     ("M7-ablation",  "Ablation study → results/ablation.csv"),
     ("M7-grid",      "Grid search → results/gridsearch.csv + figures/grid_heatmap.png"),
     ("M7-robust",    "Robustness experiment → results/robustness.csv + figures/robustness_lines.png"),
@@ -77,6 +78,7 @@ def full_run(cfg_path: Path | None = None) -> None:
     from fimicyber.nlp.embed import EmbStore
     emb = EmbStore(cfg, fallbacks_used)
     emb.encode_events(events)
+    print(f"  → embedding backend: {emb.backend}")
 
     _step("M2-narrative")
     from fimicyber.nlp.narrative import narrative_matrix
@@ -129,6 +131,121 @@ def full_run(cfg_path: Path | None = None) -> None:
     metrics_df.to_csv(cfg.results_dir / "metrics_summary.csv", index=False)
     print(f"  → metrics_summary.csv")
 
+    _step("M6-attribution")
+    from fimicyber.attribution import (
+        build_error_analysis,
+        build_attribution_graph,
+        build_attribution_hypotheses,
+        build_evidence_provenance,
+        calibrate_hypotheses,
+        evaluate_attribution_scopes,
+        run_external_ghostwriter_case,
+        run_multiactor_generalization,
+    )
+    attribution_raw_df = build_attribution_hypotheses(events, scores_df, cfg)
+    attribution_df, calibration_df = calibrate_hypotheses(
+        attribution_raw_df, cfg
+    )
+    attribution_df.to_csv(cfg.results_dir / "attribution_hypotheses.csv", index=False)
+    calibration_df.to_csv(cfg.results_dir / "attribution_calibration.csv", index=False)
+    build_error_analysis(attribution_df).to_csv(
+        cfg.results_dir / "attribution_error_analysis.csv", index=False
+    )
+    attribution_metrics_df = evaluate_attribution_scopes(attribution_df, cfg)
+
+    fitted_temperature = (
+        float(calibration_df.iloc[0]["fitted_temperature"])
+        if not calibration_df.empty else float(cfg.attribution.get("temperature", 0.15))
+    )
+    external_case = run_external_ghostwriter_case(
+        events, emb, cfg, fitted_temperature
+    )
+    generalization = run_multiactor_generalization(
+        emb, cfg, fitted_temperature
+    )
+    if external_case:
+        import pandas as pd
+        external_case["hypotheses"].to_csv(
+            cfg.results_dir / "external_ghostwriter_hypotheses.csv", index=False
+        )
+        external_case["evaluation"].to_csv(
+            cfg.results_dir / "external_ghostwriter_evaluation.csv", index=False
+        )
+        external_case["condition_comparison"].to_csv(
+            cfg.results_dir / "external_ghostwriter_condition_comparison.csv", index=False
+        )
+        external_case["error_analysis"].to_csv(
+            cfg.results_dir / "external_ghostwriter_error_analysis.csv", index=False
+        )
+        external_case["pairwise"].to_csv(
+            cfg.results_dir / "external_ghostwriter_pairwise.csv", index=False
+        )
+        build_evidence_provenance(
+            external_case["events"],
+            cfg.data_dir / "external" / "provenance_manifest.csv",
+        ).to_csv(cfg.results_dir / "evidence_provenance.csv", index=False)
+        from fimicyber.viz.external_case import render_external_ghostwriter_paths
+        render_external_ghostwriter_paths(
+            external_case["hypotheses"], cfg.results_dir / "figures"
+        )
+        attribution_metrics_df = pd.concat(
+            [attribution_metrics_df, external_case["evaluation"]], ignore_index=True
+        )
+    if generalization:
+        generalization_outputs = {
+            "hypotheses": "generalization_hypotheses.csv",
+            "evaluation": "generalization_evaluation.csv",
+            "predictions": "generalization_predictions.csv",
+            "class_metrics": "generalization_class_metrics.csv",
+            "condition_comparison": "generalization_condition_comparison.csv",
+            "condition_summary": "generalization_condition_summary.csv",
+            "error_analysis": "generalization_error_analysis.csv",
+            "acceptance": "generalization_acceptance.csv",
+            "protocol_checks": "generalization_protocol_checks.csv",
+            "pairwise": "generalization_pairwise.csv",
+        }
+        for key, filename in generalization_outputs.items():
+            generalization[key].to_csv(cfg.results_dir / filename, index=False)
+        build_evidence_provenance(
+            generalization["events"],
+            cfg.data_dir / "external" / "provenance_manifest.csv",
+        ).to_csv(cfg.results_dir / "generalization_evidence_provenance.csv", index=False)
+        from fimicyber.attribution.paper_report import write_generalization_validation_report
+        write_generalization_validation_report(
+            generalization,
+            cfg.results_dir / "paper_ready_generalization_validation.md",
+        )
+        from fimicyber.viz.generalization import render_generalization_benchmark
+        render_generalization_benchmark(
+            generalization["condition_summary"],
+            generalization["class_metrics"],
+            generalization["predictions"],
+            cfg.results_dir / "figures",
+        )
+        attribution_metrics_df = pd.concat(
+            [attribution_metrics_df, generalization["evaluation"]], ignore_index=True
+        )
+    attribution_metrics_df.to_csv(
+        cfg.results_dir / "attribution_evaluation.csv", index=False
+    )
+    if external_case:
+        from fimicyber.attribution.paper_report import write_paper_validation_report
+        write_paper_validation_report(
+            attribution_metrics_df,
+            calibration_df,
+            external_case,
+            cfg.results_dir / "paper_ready_attribution_validation.md",
+        )
+    build_attribution_graph(
+        events,
+        attribution_df,
+        cfg.results_dir / "attribution_graph.json",
+    )
+    print(
+        f"  → attribution hypotheses: {len(attribution_df)} rows, "
+        f"{attribution_df['query_event_id'].nunique() if not attribution_df.empty else 0} queries"
+    )
+
     # ── M7: ablation + grid + robustness ──────────────────────────────────
     _step("M7-ablation")
     from fimicyber.eval.experiments import run_ablation
@@ -162,7 +279,11 @@ def full_run(cfg_path: Path | None = None) -> None:
 
     _step("M8-report")
     from fimicyber.viz.charts import generate_report
-    generate_report(events, metrics_df, abl_df, rob_df, scores_df, cfg, fallbacks_used)
+    generate_report(
+        events, metrics_df, abl_df, rob_df, scores_df, cfg, fallbacks_used,
+        attribution_df=attribution_df,
+        attribution_metrics_df=attribution_metrics_df,
+    )
 
     print("\n=== Pipeline complete. See results/ ===")
 

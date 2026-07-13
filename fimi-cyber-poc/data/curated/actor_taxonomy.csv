@@ -1,0 +1,21 @@
+alias,canonical_actor_id,canonical_name,actor_level,parent_actor_id,source_url
+IRA,internet_research_agency,Internet Research Agency,organization,russia_state_linked,https://home.treasury.gov/news/press-releases/sm0333
+Ira,internet_research_agency,Internet Research Agency,organization,russia_state_linked,https://home.treasury.gov/news/press-releases/sm0333
+IRA*,internet_research_agency,Internet Research Agency,organization,russia_state_linked,https://home.treasury.gov/news/press-releases/sm0333
+Prigozhin-Wagner,prigozhin_wagner,Prigozhin-Wagner network,organization,russia_state_linked,
+Prigozhin-Wagner*,prigozhin_wagner,Prigozhin-Wagner network,organization,russia_state_linked,
+Spamouflage/Dragonbridge/Storm 1376,spamouflage_dragonbridge,Spamouflage/Dragonbridge,campaign,china_state_linked,https://cloud.google.com/blog/topics/threat-intelligence/dragonbridge-influence-operations
+Spamouflage/Dragonbridge/Storm 1376*,spamouflage_dragonbridge,Spamouflage/Dragonbridge,campaign,china_state_linked,https://cloud.google.com/blog/topics/threat-intelligence/dragonbridge-influence-operations
+DRAGONBRIDGE,spamouflage_dragonbridge,Spamouflage/Dragonbridge,campaign,china_state_linked,https://cloud.google.com/blog/topics/threat-intelligence/prc-dragonbridge-influence-elections/
+Spamouflage,spamouflage_dragonbridge,Spamouflage/Dragonbridge,campaign,china_state_linked,https://cloud.google.com/blog/topics/threat-intelligence/prc-dragonbridge-influence-elections/
+Russia-linked Doppelganger operation,doppelganger,Doppelganger,campaign,russia_state_linked,https://euvsdisinfo.eu/doppelganger-media-clones-serving-russian-disinformation/
+Doppelganger/RRN/Storm 1099,doppelganger,Doppelganger,campaign,russia_state_linked,https://euvsdisinfo.eu/doppelganger-media-clones-serving-russian-disinformation/
+Doppelganger,doppelganger,Doppelganger,campaign,russia_state_linked,https://www.sgdsn.gouv.fr/viginum/publications/rrn-une-campagne-numerique-de-manipulation-de-linformation-complexe-et
+RRN,doppelganger,Doppelganger,campaign,russia_state_linked,https://www.sgdsn.gouv.fr/viginum/publications/rrn-une-campagne-numerique-de-manipulation-de-linformation-complexe-et
+Storm-1099,doppelganger,Doppelganger,campaign,russia_state_linked,https://www.sgdsn.gouv.fr/viginum/publications/rrn-une-campagne-numerique-de-manipulation-de-linformation-complexe-et
+Ghostwriter/UNC1151,ghostwriter_unc1151,Ghostwriter/UNC1151,campaign_group,belarus_state_linked,https://cloud.google.com/blog/topics/threat-intelligence/espionage-group-unc1151-likely-conducts-ghostwriter-influence-activity
+Ghostwriter,ghostwriter_unc1151,Ghostwriter/UNC1151,campaign_group,belarus_state_linked,https://cloud.google.com/blog/topics/threat-intelligence/espionage-group-unc1151-likely-conducts-ghostwriter-influence-activity
+UNC1151,ghostwriter_unc1151,Ghostwriter/UNC1151,campaign_group,belarus_state_linked,https://cloud.google.com/blog/topics/threat-intelligence/espionage-group-unc1151-likely-conducts-ghostwriter-influence-activity
+Storm-1516/Neva Flood,storm_1516,Storm-1516/Neva Flood,campaign,russia_state_linked,https://www.sgdsn.gouv.fr/files/files/Publications/20250507_TLP-CLEAR_NP_SGDSN_VIGINUM_Technical%20report_Storm-1516.pdf
+Storm-1516,storm_1516,Storm-1516/Neva Flood,campaign,russia_state_linked,https://www.sgdsn.gouv.fr/files/files/Publications/20250507_TLP-CLEAR_NP_SGDSN_VIGINUM_Technical%20report_Storm-1516.pdf
+Neva Flood,storm_1516,Storm-1516/Neva Flood,campaign,russia_state_linked,https://www.sgdsn.gouv.fr/files/files/Publications/20250507_TLP-CLEAR_NP_SGDSN_VIGINUM_Technical%20report_Storm-1516.pdf

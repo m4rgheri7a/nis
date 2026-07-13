@@ -30,7 +30,7 @@ class EmbStore:
 
     def __init__(self, cfg: Any, fallbacks_used: list[str] | None = None) -> None:
         self._cfg = cfg
-        self._fallbacks_used = fallbacks_used or []
+        self._fallbacks_used = fallbacks_used if fallbacks_used is not None else []
         self._cache_path = cfg.data_dir / "processed" / "embeddings.parquet"
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -38,13 +38,21 @@ class EmbStore:
         self._model_name = cfg.embedding.get("model", "paraphrase-multilingual-mpnet-base-v2")
         self._chunk_tokens = int(cfg.embedding.get("chunk_tokens", 220))
         self._chunk_overlap = int(cfg.embedding.get("chunk_overlap", 40))
+        self._cache_namespace = ""
 
         self._vectorizer: Any = None   # TF-IDF model if used
         self._sbert: Any = None        # SentenceTransformer if used
 
-        # Load cache
         self._cache: dict[str, list[np.ndarray]] = {}  # sha256 → list of chunk vecs
-        self._load_cache()
+        self._ensure_backend()
+        self._cache_namespace = (
+            f"{self._backend}:{self._model_name}:"
+            f"chunk={self._chunk_tokens}:overlap={self._chunk_overlap}:v2"
+        )
+        # SBERT vectors are independently reusable. TF-IDF vectors depend on
+        # the corpus-level fitted vocabulary and are recomputed each run.
+        if self._backend == "sbert":
+            self._load_cache()
 
         self._new_encodings = 0  # count this run
 
@@ -59,8 +67,6 @@ class EmbStore:
 
         if not to_encode:
             return
-
-        self._ensure_backend()
 
         # For TF-IDF: fit on all texts before encoding any
         if self._backend == "tfidf":
@@ -90,6 +96,10 @@ class EmbStore:
     def new_encodings(self) -> int:
         return self._new_encodings
 
+    @property
+    def backend(self) -> str:
+        return self._backend
+
     # ── chunking ──────────────────────────────────────────────────────────
 
     def _chunk(self, text: str, eid: str) -> list[str]:
@@ -99,7 +109,13 @@ class EmbStore:
 
         if self._backend == "sbert" and self._sbert is not None:
             tokenizer = self._sbert.tokenizer
-            tokens = tokenizer.encode(text, add_special_tokens=False)
+            tokens = tokenizer(
+                text,
+                add_special_tokens=False,
+                truncation=False,
+                return_attention_mask=False,
+                verbose=False,
+            )["input_ids"]
             step = self._chunk_tokens - self._chunk_overlap
             if len(tokens) <= self._chunk_tokens:
                 return [text]
@@ -138,6 +154,9 @@ class EmbStore:
         try:
             from sentence_transformers import SentenceTransformer
             self._sbert = SentenceTransformer(self._model_name)
+            model_limit = int(getattr(self._sbert, "max_seq_length", self._chunk_tokens))
+            self._chunk_tokens = min(self._chunk_tokens, model_limit)
+            self._chunk_overlap = min(self._chunk_overlap, max(0, self._chunk_tokens - 1))
         except Exception as exc:
             self._sbert = None
             self._backend = "tfidf"
@@ -181,7 +200,17 @@ class EmbStore:
         try:
             import pandas as pd
             df = pd.read_parquet(self._cache_path)
-            for row in df.itertuples():
+            required = {
+                "cache_namespace", "backend", "model", "sha256", "chunk_id", "vector"
+            }
+            if not required.issubset(df.columns):
+                return
+            namespace = df[
+                df["cache_namespace"] == self._cache_namespace
+            ]
+            if namespace.empty:
+                return
+            for row in namespace.itertuples():
                 key = row.sha256
                 vec = np.array(row.vector, dtype=np.float32)
                 chunk_id = row.chunk_id
@@ -203,7 +232,14 @@ class EmbStore:
         rows = []
         for sha, vecs in self._cache.items():
             for chunk_id, vec in enumerate(vecs):
-                rows.append({"sha256": sha, "chunk_id": chunk_id, "vector": vec.tolist()})
+                rows.append({
+                    "cache_namespace": self._cache_namespace,
+                    "backend": self._backend,
+                    "model": self._model_name,
+                    "sha256": sha,
+                    "chunk_id": chunk_id,
+                    "vector": vec.tolist(),
+                })
 
         if rows:
             df = pd.DataFrame(rows)

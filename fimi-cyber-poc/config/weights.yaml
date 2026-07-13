@@ -54,6 +54,52 @@ priority:
   theta: {link: 0.35, impact: 0.15, evidence: 0.15, cyber: 0.20, urgency: 0.15}
   impact_default: 0.5
 
+attribution:
+  enabled: true
+  taxonomy_file: actor_taxonomy.csv
+  temporal_only: true        # query보다 먼저 관측된 reference event만 사용
+  min_actor_history: 2
+  top_k_reference_events: 3
+  top_k_candidates: 3
+  excluded_labels: ["unknown", "unattributed", "not attributed", "n/a", "none"]
+  support_threshold: 0.20
+  coverage_penalty_power: 0.70
+  calibration:
+    enabled: true
+    fraction: 0.60
+    min_temperature: 0.02
+    max_temperature: 2.0
+    grid_points: 80
+  abstention:
+    confidence_threshold: 0.55
+    margin_threshold: 0.03
+    min_evidence_families: 2
+  bootstrap_iters: 500
+  external_case:
+    enabled: true
+    events_file: ghostwriter_events.jsonl
+    iocs_file: ghostwriter_iocs.csv
+  generalization_benchmark:
+    enabled: true
+    protocol_file: generalization_protocol.yaml
+    events_files: [ghostwriter_events.jsonl, multiactor_events.jsonl]
+    iocs_files: [ghostwriter_iocs.csv, multiactor_iocs.csv]
+  temperature: 0.15          # 후보 간 softmax 확률 보정값
+  weights:
+    narrative: 0.25
+    infrastructure: 0.30     # 실제 IOC(I_no_synthetic)만 사용
+    ttp: 0.20
+    channel: 0.10
+    temporal: 0.05
+    target: 0.10
+  confidence:
+    min_evidence_families: 2
+    no_real_ioc_cap: 0.70
+    single_source_cap: 0.60
+    insufficient_evidence_cap: 0.45
+    moderate_threshold: 0.55
+    strong_threshold: 0.75
+
 eval:
   p_at: [1, 3, 5]
   ndcg_at: 10

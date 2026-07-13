@@ -63,7 +63,10 @@ def _event_from_json(obj: dict[str, Any]) -> Event:
         ttps=list(obj.get("ttps", [])),
         channels=list(obj.get("channels", [])),
         evidence_sources=list(obj.get("evidence_sources", [])),
+        evidence_ids=list(obj.get("evidence_ids", [])),
         source_dataset=str(obj.get("source_dataset", "curated")),
+        evaluation_role=obj.get("evaluation_role", "development"),
+        date_basis=obj.get("date_basis", "observed"),
     )
 
 
@@ -126,6 +129,7 @@ def _attach_iocs(events: list[Event], iocs_path: Path) -> None:
             first_seen=first_seen,
             last_seen=last_seen,
             sources=[source_url] if source_url else [],
+            evidence_ids=[row["evidence_id"].strip()] if row.get("evidence_id", "").strip() else [],
             status=row.get("status") or "validated",
             synthetic=False,
         ))
