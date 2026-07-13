@@ -40,23 +40,55 @@ python scripts/serve.py            # 웹 대시보드 → http://localhost:5000
 
 ```bash
 python scripts/run_all.py --dry-run  # 단계 목록만 출력
-pytest tests/ -v                     # 자동화 테스트 52개
+pytest tests/ -v                     # 자동화 테스트 69개
 ```
 
-### Qwen3-8B 증거 구조화
+### LLM 증거 구조화
 
 LLM은 행위자를 확정하지 않고 비정형 사례 설명에서 근거 문장과 TTP 후보를 구조화한다.
 채널·표적·IOC는 결정적 검증층이 원문 가시성과 통제 어휘를 확인한 뒤에만 증거 객체로
-승격한다. 기본 백엔드는 로컬 Ollama의 `qwen3:8b`이다.
+승격한다. 백엔드는 로컬 Ollama이며 모델 태그는 파라미터다.
 
 ```bash
-ollama pull qwen3:8b
-python scripts/run_llm_hfes.py --output-suffix qwen3_8b
+ollama pull qwen3:14b
+python scripts/run_llm_hfes.py --model qwen3:14b --output-suffix qwen3_14b
 ```
 
-결과는 `results/llm_structured_evidence_qwen3_8b.jsonl`,
-`results/llm_structuring_evaluation_qwen3_8b.csv`,
-`results/llm_structuring_summary_qwen3_8b.md`에 저장된다.
+이 스크립트는 구조화 품질만 채점한다. 구조화 결과가 실제 후보 순위화에 기여하는지는
+아래 조건 비교 실험이 측정한다.
+
+### 증거 구조화 조건 비교 (M9)
+
+구조화 모듈이 최종 후보 순위화에 실제로 기여하는지 확인하려면, 큐레이션된 정답 필드가
+아니라 사례 원문에서 증거를 다시 도출해 동일한 다운스트림으로 순위화해야 한다.
+`run_condition_benchmark.py`는 하나의 데이터 분할과 하나의 다운스트림(증거 그래프 →
+FCLS → 후보 순위화 → 판정 보류)에 네 조건을 통과시킨다.
+
+| 조건 | 증거 출처 |
+|------|-----------|
+| `curated_oracle` | 사람이 정규화한 필드 (성능 상한, 기존 발표 수치의 조건) |
+| `rules_only` | 사례 dossier에서 규칙·정규식 추출 |
+| `llm_guarded` | 동일 dossier에서 LLM 구조화 + 가드레일 |
+| `llm_only` | 동일 LLM 출력, 가드레일 해제 (실패 사례 대조군) |
+
+```bash
+python scripts/run_all.py                          # M9는 LLM 없이 2조건 실행
+python scripts/run_all.py --llm-model qwen3:14b    # 4조건 전부
+python scripts/run_condition_benchmark.py --model qwen3:14b
+python scripts/run_condition_benchmark.py --no-annex   # 기술부록 제거 → IOC 희소성 측정
+```
+
+**누출 통제.** 네 조건 모두 동일한 case dossier를 읽는다. dossier는 보고서 요약문과
+공개 기술부록(defang 표기 IOC)을 복원한 텍스트이며, 행위자·캠페인 명칭은 스크러빙된다
+(`llm/dossier.py`). 큐레이션 정답 필드(TTP·채널·표적·IOC·campaign_id·reported_actor)는
+dossier에 렌더링되지 않고, 홀드아웃 라벨은 순위화가 끝난 뒤 채점에만 열린다.
+`tests/test_m9_condition_benchmark.py`가 이 계약을 강제한다.
+
+기술부록은 공개 보고서의 IOC 표를 텍스트로 재구성한 것이지 원본 PDF의 축자 복사가 아니다.
+
+산출물: `results/condition_ranking_metrics.csv`, `condition_extraction_metrics.csv`,
+`condition_hallucinated_iocs.csv`, `condition_case_dossiers.jsonl`,
+`condition_run_manifest.json`(모델 태그·digest·seed·GPU), `condition_benchmark_summary.md`.
 
 ## 구조
 
@@ -71,9 +103,11 @@ src/fimicyber/
   scoring/       D·C·T·A 성분, FCLS 재정규화, Priority
   eval/          GT, MAP/nDCG, E1/E2/E3, ablation, 강건성
   viz/           pyvis 증거 경로, matplotlib 차트, report.md
+  llm/           case dossier 생성·라벨 스크러빙, 가드레일 증거 구조화
 scripts/
-  run_all.py        전체 파이프라인 단일 진입점
-  run_llm_hfes.py   Qwen3-8B 증거 구조화 및 결정적 검증
+  run_all.py        전체 파이프라인 단일 진입점 (M9 조건 비교 포함)
+  run_llm_hfes.py   LLM 증거 구조화 품질 채점
+  run_condition_benchmark.py  4조건 비교 — 구조화 → 그래프 → FCLS → 후보 순위화
   serve.py          Flask 웹 대시보드 (파이프라인 실행·테스트·결과 시각화)
   make_fixtures.py  샘플 20건 생성기 (DISINFOX 미사용 시 자동 호출)
 ```

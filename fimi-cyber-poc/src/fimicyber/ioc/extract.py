@@ -132,16 +132,29 @@ def _extract_raw_iocs(text: str) -> Iterator[tuple[str, str, str]]:
 
 def extract_iocs_from_event(event: Event) -> list[IOC]:
     """Extract IOCs from event.description. Returns OperationalIOC candidates."""
+    return extract_iocs_from_text(event.description, event)
+
+
+def extract_iocs_from_text(
+    text: str,
+    event: Event,
+    source_label: str = "text_extraction",
+) -> list[IOC]:
+    """Extract IOCs from arbitrary case text using ``event`` only for metadata.
+
+    Used by the evidence-structuring conditions, which read a reconstructed case
+    dossier rather than the curated ``description`` field.
+    """
     from fimicyber.ioc.classify import classify_ioc
     from fimicyber.ioc.confidence import compute_confidence
 
-    if not event.description or not event.description.strip():
+    if not text or not text.strip():
         return []
 
     seen: set[str] = set()
     result: list[IOC] = []
 
-    for value, ioc_type, ctx in _extract_raw_iocs(event.description):
+    for value, ioc_type, ctx in _extract_raw_iocs(text):
         key = f"{ioc_type}:{value}"
         if key in seen:
             continue
@@ -158,7 +171,7 @@ def extract_iocs_from_event(event: Event) -> list[IOC]:
             ioc_type=ioc_type,
             category=category,
             context=ctx,
-            source_label="text_extraction",
+            source_label=source_label,
             n_sources=1,
             event_first_seen=event.first_seen,
             event_last_seen=event.last_seen,

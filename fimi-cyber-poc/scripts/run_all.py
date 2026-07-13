@@ -34,6 +34,7 @@ STEPS = [
     ("M8-cluster",   "Event cluster graph → results/event_cluster.html + figures/event_cluster.png"),
     ("M8-charts",    "Generate charts → figures/{metrics_bar,...,event_cluster}.png"),
     ("M8-report",    "Generate report → results/report.md"),
+    ("M9-conditions","Evidence-structuring conditions → results/condition_*.csv"),
 ]
 
 
@@ -43,7 +44,7 @@ def dry_run() -> None:
         print(f"  [{i:02d}] {name:<20} {desc}")
 
 
-def full_run(cfg_path: Path | None = None) -> None:
+def full_run(cfg_path: Path | None = None, llm_model: str | None = None) -> None:
     from fimicyber.config import load_config
 
     cfg = load_config(cfg_path)
@@ -285,6 +286,40 @@ def full_run(cfg_path: Path | None = None) -> None:
         attribution_metrics_df=attribution_metrics_df,
     )
 
+    # ── M9: evidence-structuring conditions ────────────────────────────────
+    # Ranking the four campaigns from curated fields tells us nothing about how
+    # the system would behave on an unstructured report. This step re-derives the
+    # evidence from case text and re-ranks, so the LLM's actual contribution to
+    # Top-1/Top-3/MRR is measured rather than assumed. LLM conditions are opt-in
+    # because they need a local Ollama server.
+    _step("M9-conditions")
+    from fimicyber.eval.condition_benchmark import (
+        run_condition_benchmark,
+        write_condition_outputs,
+    )
+    conditions = ("curated_oracle", "rules_only")
+    if llm_model:
+        conditions += ("llm_guarded", "llm_only")
+    condition_bundle = run_condition_benchmark(
+        emb,
+        cfg,
+        fitted_temperature,
+        model=llm_model or "-",
+        conditions=conditions,
+        temperature_source="fitted in this run",
+    )
+    if condition_bundle:
+        write_condition_outputs(condition_bundle, cfg.results_dir)
+        ranking = condition_bundle["ranking_metrics"]
+        for _, row in ranking.iterrows():
+            print(
+                f"  → {row['condition']:<15} top1={row['top1_accuracy']:.2f} "
+                f"top3={row['top3_accuracy']:.2f} MRR={row['MRR']:.3f} "
+                f"false_attr={row['false_attribution_rate']:.2f}"
+            )
+    else:
+        print("  → skipped: no benchmark events")
+
     print("\n=== Pipeline complete. See results/ ===")
 
 
@@ -312,9 +347,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument(
+        "--llm-model",
+        default=None,
+        help="Ollama tag (e.g. qwen3:14b). Adds the llm_guarded and llm_only "
+             "conditions to M9. Omit to run M9 without a model.",
+    )
     args = parser.parse_args()
 
     if args.dry_run:
         dry_run()
     else:
-        full_run(args.config)
+        full_run(args.config, llm_model=args.llm_model)
