@@ -59,6 +59,10 @@ class Config:
         return self._w["priority"]
 
     @property
+    def attribution(self) -> dict[str, Any]:
+        return self._w.get("attribution", {})
+
+    @property
     def eval(self) -> dict[str, Any]:
         return self._w["eval"]
 

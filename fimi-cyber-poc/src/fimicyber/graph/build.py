@@ -1,8 +1,9 @@
 """Evidence graph builder (spec 6.1).
 
-Nodes: Event, IOC, TTP, Channel, EvidenceSource, Domain, IP, NS, ASN
+Nodes: Event, Campaign, Actor, IOC, TTP, Channel, EvidenceSource, Domain, IP, NS, ASN
 Edges: LINKED_TO, USES, DISTRIBUTED_ON, SUPPORTED_BY,
-       RESOLVES_TO, USES_NS, BELONGS_TO_ASN, REDIRECTS_TO, REGISTERED_AT
+       PART_OF, REPORTED_ATTRIBUTION, RESOLVES_TO, USES_NS,
+       BELONGS_TO_ASN, REDIRECTS_TO, REGISTERED_AT
 """
 from __future__ import annotations
 
@@ -37,6 +38,36 @@ def build_graph(events: list[Event], cfg: Any) -> nx.Graph:
     # ── Add per-event nodes & edges ────────────────────────────────────────
     for ev in events:
         ev_node = _node_id("Event", ev.event_id)
+
+        # Campaign and actor labels are reference context only. Scoring never
+        # traverses these nodes, preventing ground-truth leakage into FCLS.
+        if ev.campaign_id:
+            campaign_node = _node_id("Campaign", ev.campaign_id)
+            G.add_node(campaign_node, ntype="Campaign", value=ev.campaign_id)
+            G.add_edge(
+                ev_node, campaign_node,
+                etype="PART_OF",
+                weight=1.0,
+                confidence=1.0,
+                first_seen=str(ev.first_seen or ""),
+                last_seen=str(ev.last_seen or ""),
+                explanation=f"Event {ev.event_id} is reported in campaign {ev.campaign_id}",
+                reference_only=True,
+            )
+
+        if ev.reported_actor:
+            actor_node = _node_id("Actor", ev.reported_actor)
+            G.add_node(actor_node, ntype="Actor", value=ev.reported_actor)
+            G.add_edge(
+                ev_node, actor_node,
+                etype="REPORTED_ATTRIBUTION",
+                weight=1.0,
+                confidence=1.0,
+                first_seen=str(ev.first_seen or ""),
+                last_seen=str(ev.last_seen or ""),
+                explanation=f"Public source reports actor label {ev.reported_actor}",
+                reference_only=True,
+            )
 
         # TTPs
         for ttp in ev.ttps:

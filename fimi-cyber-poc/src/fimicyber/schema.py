@@ -23,6 +23,7 @@ class IOC(BaseModel):
     first_seen: date | None = None
     last_seen: date | None = None
     sources: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
     status: Literal["candidate", "validated", "rejected", "needs_review"] = "candidate"
     synthetic: bool = False
 
@@ -43,6 +44,24 @@ class Event(BaseModel):
     ttps: list[str] = Field(default_factory=list)
     channels: list[str] = Field(default_factory=list)
     evidence_sources: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
     iocs: list[IOC] = Field(default_factory=list)
     source_dataset: str = "disinfox"
+    evaluation_role: Literal["development", "reference", "holdout"] = "development"
+    date_basis: Literal["observed", "published", "unknown"] = "observed"
+    ai_artifact_signal: Literal["none", "suspected", "confirmed", "unknown"] = "unknown"
+    provenance_signal: Literal[
+        "present", "missing", "stripped", "inconsistent", "unknown"
+    ] = "unknown"
+    kill_chain_stage: Literal[
+        "preparation",
+        "content_creation",
+        "seeding",
+        "amplification",
+        "exploitation",
+        "unknown",
+    ] = "unknown"
+    llm_extracted: bool = False
+    evidence_sentences: list[str] = Field(default_factory=list)
+    uncertainty_notes: list[str] = Field(default_factory=list)
 

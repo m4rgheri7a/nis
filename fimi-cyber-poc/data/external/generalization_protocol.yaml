@@ -1,0 +1,59 @@
+protocol_id: fimi-cyber-multiactor-v1
+frozen_at: 2026-07-13
+evidence_cutoff: 2026-07-13
+claim_boundary: >-
+  External pilot evidence for campaign-level public-source hypothesis ranking.
+  This is not proof of state, organisation, natural-person, or legal attribution.
+
+design:
+  classes: 4
+  reference_events_per_class: 2
+  holdout_events_per_class: 5
+  reference_role: reference
+  query_role: holdout
+  source_and_time_separation_required: true
+  labels_available_to_ranker: reference_only
+  holdout_labels_used_for: evaluation_only
+  synthetic_iocs_allowed: false
+  post_holdout_tuning_allowed: false
+
+class_ids:
+  - ghostwriter_unc1151
+  - doppelganger
+  - spamouflage_dragonbridge
+  - storm_1516
+
+frozen_model:
+  embedding_backend: sbert
+  embedding_model: paraphrase-multilingual-mpnet-base-v2
+  calibrated_temperature_source: chronological_internal_calibration
+  top_k_reference_events: 3
+  attribution_weights:
+    narrative: 0.25
+    infrastructure: 0.30
+    ttp: 0.20
+    channel: 0.10
+    temporal: 0.05
+    target: 0.10
+  abstention:
+    confidence_threshold: 0.55
+    margin_threshold: 0.03
+    min_evidence_families: 2
+
+acceptance_criteria:
+  minimum_queries_evaluable: 20
+  minimum_actor_labels: 4
+  minimum_top1_accuracy: 0.60
+  minimum_macro_top1_accuracy: 0.60
+  minimum_top1_lift_over_majority: 0.10
+  minimum_top3_accuracy: 0.80
+  minimum_review_coverage: 0.60
+  maximum_false_attribution_rate: 0.10
+
+reporting:
+  bootstrap_confidence_interval: 0.95
+  report_majority_baseline: true
+  report_per_class_metrics: true
+  report_confusion_matrix: true
+  report_abstentions: true
+  report_all_failures: true
